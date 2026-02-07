@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>REBPBS Automation - Standard Edition</title>
+    <link rel="icon" href="https://cdn-icons-png.flaticon.com/128/13067/13067247.png" type="image/png">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        bg: '#131314',
+                        surface: '#1E1F20',
+                        surface2: '#2D2E30',
+                        primary: '#8AB4F8',
+                        text: '#E3E3E3',
+                        textDim: '#9AA0A6',
+                        border: '#3C4043'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #131314; color: #E3E3E3; font-family: 'Segoe UI', sans-serif; overflow: hidden; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #1E1F20; }
+        ::-webkit-scrollbar-thumb { background: #3C4043; border-radius: 3px; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        .loader {
+            border: 2px solid transparent; border-top: 2px solid currentColor; border-radius: 50%;
+            width: 14px; height: 14px; animation: spin 0.8s linear infinite; display: inline-block;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .sheet-input {
+            background: transparent; border: none; color: #E3E3E3; width: 100%; outline: none; text-align: center;
+            font-family: monospace; font-size: 14px; font-weight: 600;
+            display: flex; align-items: center; justify-content: center; height: 100%;
+        }
+        .sheet-input:focus { background: #2D2E30; }
+        
+        .grid-table {
+            display: grid; gap: 1px;
+            grid-template-columns: 35px 140px 140px 120px 80px 30px; 
+            min-width: 900px;
+        }
+        @media (min-width: 768px) {
+            .grid-table { 
+                grid-template-columns: 40px 1fr 1fr 1fr 100px 30px; 
+                min-width: 100%;
+            }
+        }
+
+        .grid-cell { 
+            background: #1E1F20; padding: 0 4px;
+            height: 40px; 
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px; 
+        }
+        .grid-header { background: #2D2E30; font-weight: bold; color: #8AB4F8; font-size: 0.8rem; }
+        .col-hidden { display: none; }
+    </style>
+</head>
+<body class="h-screen flex flex-col">
+
+    <div id="loginPage" class="fixed inset-0 z-50 flex items-center justify-center bg-bg p-4">
+        <div class="bg-surface p-8 rounded-xl shadow-2xl w-full max-w-sm border border-border">
+            <div class="flex justify-center mb-6"><i id="lockIcon" class="fa-solid fa-key text-5xl text-primary"></i></div>
+            <h2 class="text-2xl font-bold text-center mb-1">PBSNet Login</h2>
+            <p id="loginStatus" class="text-center text-xs text-textDim mb-6">Checking for Admin API Key...</p>
+            <form id="loginForm" onsubmit="handleApiKeyLogin(event)">
+                <div class="mb-4">
+                    <input type="password" id="apiKeyInput" class="w-full bg-surface2 border border-border rounded p-3 text-white text-center outline-none focus:border-primary transition" placeholder="pbsnet-xxxx-xxxx">
+                </div>
+                <button type="submit" id="loginBtn" class="w-full bg-primary text-black font-bold py-3 rounded hover:bg-blue-400 transition flex justify-center items-center gap-2">Verify & Enter</button>
+            </form>
+            <div id="loginMsg" class="text-red-400 text-xs text-center mt-4 h-5"></div>
+        </div>
+    </div>
+
+    <div id="appLayout" class="hidden flex-col h-full">
+        <header class="bg-surface border-b border-border h-14 flex items-center justify-between px-3 shrink-0">
+            <div class="flex items-center gap-3">
+                <i class="fa-solid fa-bolt text-primary text-xl"></i>
+                <h1 class="font-bold text-base hidden sm:block">RebPbs Auto</h1>
+            </div>
+            <div id="displayOffice" class="text-[10px] text-textDim truncate px-2">Loading...</div>
+            <div class="flex items-center gap-2">
+                <div id="displayUserName" class="text-xs font-bold text-green-400">Guest</div>
+                <button onclick="toggleCredModal()" class="text-primary bg-surface2 p-2 rounded hover:bg-border" title="Update Credentials"><i class="fa-solid fa-user-gear"></i></button>
+            </div>
+        </header>
+
+        <main id="view-dashboard" class="flex-1 flex flex-col overflow-hidden">
+            <div class="h-12 border-b border-border flex items-center px-2 gap-2 shrink-0 bg-surface overflow-x-auto no-scrollbar">
+                <button onclick="toggleSettingsModal()" class="bg-surface2 text-textDim hover:text-white px-3 py-1.5 rounded text-xs border border-border whitespace-nowrap"><i class="fa-solid fa-sliders"></i> Config</button>
+                <button onclick="toggleSheetModal()" class="bg-surface2 text-green-400 hover:text-white px-3 py-1.5 rounded text-xs border border-border whitespace-nowrap"><i class="fa-solid fa-paste"></i> Sheet</button>
+                <button onclick="addEmptyRow()" class="hidden md:flex bg-surface2 hover:bg-border text-white px-3 py-1.5 rounded text-xs border border-border whitespace-nowrap gap-1 items-center"><i class="fa-solid fa-plus"></i> Add Row</button>
+                <button onclick="clearSuccessRows()" class="bg-surface2 hover:bg-red-900/50 text-red-300 px-3 py-1.5 rounded text-xs border border-border whitespace-nowrap"><i class="fa-solid fa-broom"></i> Clear Done</button>
+                <div class="flex-1"></div>
+                <button id="postBtn" onclick="startPostingOneByOne()" class="bg-green-700 hover:bg-green-600 text-white px-4 py-1.5 rounded text-xs font-bold flex items-center gap-2 shadow-lg whitespace-nowrap"><i class="fa-solid fa-paper-plane"></i> Start Posting</button>
+            </div>
+            
+            <div class="flex-1 overflow-auto bg-bg p-1 sm:p-2">
+                <div class="overflow-x-auto pb-20">
+                    <div id="meterTable" class="grid-table rounded overflow-hidden">
+                        <div class="grid-cell grid-header">#</div>
+                        <div class="grid-cell grid-header">Meter No</div>
+                        <div class="grid-cell grid-header">Seal No</div>
+                        <div class="grid-cell grid-header">Brand</div>
+                        <div class="grid-cell grid-header opt-col opt-init col-hidden">Init</div>
+                        <div class="grid-cell grid-header opt-col opt-kwh col-hidden">KWH</div>
+                        <div class="grid-cell grid-header opt-col opt-demand col-hidden">Dem</div>
+                        <div class="grid-cell grid-header opt-col opt-type col-hidden">Type</div>
+                        <div class="grid-cell grid-header opt-col opt-bs1 col-hidden">BS1</div>
+                        <div class="grid-cell grid-header opt-col opt-bs2 col-hidden">BS2</div>
+                        <div class="grid-cell grid-header opt-col opt-ctManufacturer col-hidden">CT Mfg</div>
+                        <div class="grid-cell grid-header opt-col opt-ctSeal col-hidden">CT Seal</div>
+                        <div class="grid-cell grid-header" style="min-width: 80px;">Status</div>
+                        <div class="grid-cell grid-header"><i class="fa-solid fa-trash"></i></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div id="settingsModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div class="bg-surface p-5 rounded-xl w-full max-w-sm border border-border shadow-2xl">
+            <h3 class="font-bold mb-4 text-primary">Column Settings</h3>
+            <div class="grid grid-cols-2 gap-3 text-sm mb-6">
+                <label class="flex items-center gap-2"><input type="checkbox" id="tog-init" onchange="updateColumns(); saveDraft()"> Initial Read</label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="tog-kwh" onchange="updateColumns(); saveDraft()"> KWH Read</label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="tog-demand" onchange="updateColumns(); saveDraft()"> Demand</label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="tog-type" onchange="updateColumns(); saveDraft()"> Meter Type</label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="tog-bs1" onchange="updateColumns(); saveDraft()"> Body Seal 1</label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="tog-bs2" onchange="updateColumns(); saveDraft()"> Body Seal 2</label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="tog-ctManufacturer" onchange="updateColumns(); saveDraft()"> CT Manufacturer</label>
+                <label class="flex items-center gap-2"><input type="checkbox" id="tog-ctSeal" onchange="updateColumns(); saveDraft()"> CT Seal</label>
+            </div>
+            <button onclick="toggleSettingsModal()" class="w-full bg-surface2 text-white py-2.5 rounded font-bold">Done</button>
+        </div>
+    </div>
+
+    <div id="sheetModal" class="hidden fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+        <div class="bg-surface p-5 rounded-xl w-full max-w-md border border-border shadow-2xl">
+            <h3 class="font-bold mb-2 text-primary">Paste Sheet Data</h3>
+            <textarea id="sheetPasteArea" class="w-full h-40 bg-bg border border-border rounded p-3 text-xs text-white outline-none font-mono focus:border-primary" placeholder="MeterNo    SealNo"></textarea>
+            <div class="flex gap-2 mt-4">
+                <button onclick="processSheetData()" class="flex-1 bg-green-700 text-white py-2 rounded font-bold text-sm">Load Data</button>
+                <button onclick="toggleSheetModal()" class="flex-1 bg-surface2 text-white py-2 rounded text-sm">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="credModal" class="hidden fixed inset-0 z-[70] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+        <div class="bg-surface p-6 rounded-xl w-full max-w-sm border border-border">
+            <h3 class="font-bold mb-4 text-primary">Update REBPBS Credentials</h3>
+            <input type="text" id="rebUser" class="w-full bg-surface2 border border-border rounded p-2 mb-3 text-white text-sm outline-none" placeholder="REBPBS User ID">
+            <input type="password" id="rebPass" class="w-full bg-surface2 border border-border rounded p-2 mb-4 text-white text-sm outline-none" placeholder="REBPBS Password">
+            <div class="flex gap-2">
+                <button onclick="saveToAdminApi()" id="saveCredBtn" class="flex-1 bg-green-700 text-white py-2 rounded text-sm font-bold">Update & Save</button>
+                <button onclick="toggleCredModal()" class="flex-1 bg-surface2 text-white py-2 rounded text-sm">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const REBPBS_API = 'https://mtroom-server.koyeb.app/app/rebpbs.js';
+        const STATUS_URL = 'https://mtroom-server.koyeb.app/api/status/';
+
+        const manufacturers = [
+            {id:'41', name:'Hexing Inc.'}, {id:'61', name:'Power Plus'}, {id:'321', name:'PASHA'},
+            {id:'461', name:'Super Star'}, {id:'581', name:'Badhon'}, {id:'601', name:'JFJ'}
+            // ... (বাকি ব্র্যান্ডগুলো আপনি প্রয়োজনে যুক্ত করতে পারবেন)
+        ];
+
+        let state = {
+            userKey: localStorage.getItem('pbsnet_key') || '',
+            rebCreds: { userid: '', password: '' },
+            defaults: { manufacturerId: '581', meterType: 'j-39', bodySeal1: 'LS', bodySeal2: 'LS', initialReading: '0', kwhReading: '0', demandReading: '0', ctManufacturer: '0', ctSeal: '0' }
+        };
+
+        // --- Proxy API Helpers ---
+        async function callAdminProxy(endpoint, payload, method = 'POST') {
+            const res = await fetch('/api/admin-proxy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ endpoint, payload, method })
+            });
+            return res;
+        }
+
+        async function runRebTask(payload) {
+            const res = await fetch(REBPBS_API, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            const data = await res.json();
+            if (data.status === 'queued' && data.trackingId) return await pollStatus(data.trackingId);
+            return data;
+        }
+
+        async function pollStatus(id) {
+            while (true) {
+                const res = await fetch(`${STATUS_URL}${id}`);
+                const task = await res.json();
+                if (task.status === 'completed') return task.result;
+                if (task.status === 'failed') throw new Error("Task failed");
+                await new Promise(r => setTimeout(r, 2000));
+            }
+        }
+
+        // --- Authentication ---
+        async function handleApiKeyLogin(e) {
+            if(e) e.preventDefault();
+            const key = document.getElementById('apiKeyInput').value;
+            const icon = document.getElementById('lockIcon');
+            const msg = document.getElementById('loginMsg');
+            
+            icon.className = "fa-solid fa-spinner fa-spin text-5xl text-primary";
+            msg.innerText = "";
+
+            try {
+                const res = await callAdminProxy('/view', { target_user_key: key, subclass: 'rebpbs' });
+                const adminData = await res.json();
+
+                if (res.status === 200) {
+                    state.userKey = key;
+                    localStorage.setItem('pbsnet_key', key);
+                    if (adminData.app_json && adminData.app_json.rebpbs) {
+                        state.rebCreds = adminData.app_json.rebpbs;
+                        const login = await runRebTask({ action: 'check', userid: state.rebCreds.userid, password: state.rebCreds.password });
+                        if(login.success) initApp(login);
+                        else triggerUpdateError("REBPBS Login Error!");
+                    } else { triggerUpdateError("Creds missing!"); }
+                } else { 
+                    msg.innerText = "Invalid Admin API Key!";
+                    icon.className = "fa-solid fa-key text-5xl text-primary";
+                }
+            } catch (err) { 
+                msg.innerText = "Connection Failed"; 
+                icon.className = "fa-solid fa-key text-5xl text-primary";
+            }
+        }
+
+        function initApp(loginData) {
+            document.getElementById('loginPage').classList.add('hidden');
+            document.getElementById('appLayout').classList.remove('hidden');
+            document.getElementById('appLayout').classList.add('flex');
+            document.getElementById('displayUserName').innerText = loginData.userInfo.split('[')[0];
+            document.getElementById('displayOffice').innerText = loginData.pbs;
+            restoreDraft();
+            loadSettings();
+        }
+
+        function triggerUpdateError(msg) {
+            alert(msg + " দয়া করে তথ্য আপডেট করুন।");
+            document.getElementById('loginPage').classList.add('hidden');
+            document.getElementById('appLayout').classList.remove('hidden');
+            toggleCredModal();
+        }
+
+        async function saveToAdminApi() {
+            const u = document.getElementById('rebUser').value;
+            const p = document.getElementById('rebPass').value;
+            const btn = document.getElementById('saveCredBtn');
+            btn.innerText = "Saving...";
+            try {
+                const res = await callAdminProxy('/update', { 
+                    target_user_key: state.userKey, 
+                    subclass: 'rebpbs', 
+                    data: { userid: u, password: p } 
+                }, 'PATCH');
+                if(res.ok) { alert("Successfully Updated! Reloading..."); location.reload(); }
+            } catch (err) { alert("Update failed"); }
+            btn.innerText = "Update & Save";
+        }
+
+        // --- Core Table Logic ---
+        function createRowHtml(index, data = null) {
+            const getVal = (key, def) => (data && key in data) ? data[key] : def;
+            const brandOptions = manufacturers.map(m => `<option value="${m.id}" ${m.id == getVal('manufacturerId', state.defaults.manufacturerId) ? 'selected' : ''}>${m.name}</option>`).join('');
+            
+            return `
+                <div class="grid-cell text-textDim row-index">${index}</div>
+                <div class="grid-cell"><input class="sheet-input inp-meter" value="${getVal('meterNo', '')}" placeholder="Meter" oninput="saveDraft()" onkeydown="handleKey(event)"></div>
+                <div class="grid-cell"><input class="sheet-input inp-seal" value="${getVal('sealNo', '')}" placeholder="Seal" oninput="saveDraft()" onkeydown="handleKey(event)"></div>
+                <div class="grid-cell"><select class="sheet-input inp-brand">${brandOptions}</select></div>
+                <div class="grid-cell opt-col opt-init col-hidden"><input class="sheet-input inp-init" value="${getVal('initialReading', '0')}"></div>
+                <div class="grid-cell opt-col opt-kwh col-hidden"><input class="sheet-input inp-kwh" value="${getVal('kwhReading', '0')}"></div>
+                <div class="grid-cell opt-col opt-demand col-hidden"><input class="sheet-input inp-demand" value="${getVal('demandReading', '0')}"></div>
+                <div class="grid-cell opt-col opt-type col-hidden"><input class="sheet-input inp-type" value="${getVal('meterType', 'j-39')}"></div>
+                <div class="grid-cell opt-col opt-bs1 col-hidden"><input class="sheet-input inp-bs1" value="${getVal('bodySeal1', 'LS')}"></div>
+                <div class="grid-cell opt-col opt-bs2 col-hidden"><input class="sheet-input inp-bs2" value="${getVal('bodySeal2', 'LS')}"></div>
+                <div class="grid-cell opt-col opt-ctManufacturer col-hidden"><input class="sheet-input inp-ctManufacturer" value="${getVal('ctManufacturer', '0')}"></div>
+                <div class="grid-cell opt-col opt-ctSeal col-hidden"><input class="sheet-input inp-ctSeal" value="${getVal('ctSeal', '0')}"></div>
+                <div class="grid-cell status-cell text-xs ${data && data.isSuccess ? 'text-green-500' : 'text-textDim'}">${data ? data.statusHtml : 'Pending'}</div>
+                <div class="grid-cell cursor-pointer text-red-400" onclick="deleteRow(this)"><i class="fa-solid fa-trash"></i></div>
+            `;
+        }
+
+        function renderRows(count, dataArray = null) {
+            const container = document.getElementById('meterTable');
+            if (dataArray) {
+                dataArray.forEach((d, i) => {
+                    const div = document.createElement('div');
+                    div.className = 'meter-row'; div.style.display = 'contents';
+                    div.innerHTML = createRowHtml(i + 1, d);
+                    container.appendChild(div);
+                });
+            } else {
+                for(let i=0; i<count; i++) {
+                    const div = document.createElement('div');
+                    div.className = 'meter-row'; div.style.display = 'contents';
+                    div.innerHTML = createRowHtml(container.querySelectorAll('.meter-row').length + 1);
+                    container.appendChild(div);
+                }
+            }
+            updateColumns();
+        }
+
+        async function startPostingOneByOne() {
+            const rows = Array.from(document.querySelectorAll('.meter-row')).filter(r => {
+                const m = r.querySelector('.inp-meter').value.trim();
+                return m && !r.querySelector('.status-cell').classList.contains('text-green-500');
+            });
+            if(rows.length === 0) return alert("No meters to post!");
+
+            const btn = document.getElementById('postBtn');
+            btn.disabled = true; btn.innerText = "Posting...";
+
+            for (let row of rows) {
+                const st = row.querySelector('.status-cell');
+                st.innerHTML = '<span class="loader text-primary"></span>';
+                try {
+                    const data = {
+                        meterNo: row.querySelector('.inp-meter').value,
+                        sealNo: row.querySelector('.inp-seal').value,
+                        manufacturerId: row.querySelector('.inp-brand').value,
+                        initialReading: row.querySelector('.inp-init').value,
+                        kwhReading: row.querySelector('.inp-kwh').value,
+                        meterType: row.querySelector('.inp-type').value,
+                        bodySeal1: row.querySelector('.inp-bs1').value,
+                        bodySeal2: row.querySelector('.inp-bs2').value
+                    };
+                    await runRebTask({ action: 'FAST', userid: state.rebCreds.userid, password: state.rebCreds.password, meters: [data] });
+                    st.innerHTML = '<i class="fa-solid fa-check"></i> Done';
+                    st.className = "grid-cell status-cell text-green-500 font-bold";
+                } catch (err) { st.innerText = "Error"; st.className = "grid-cell status-cell text-red-500"; }
+                saveDraft();
+            }
+            btn.disabled = false; btn.innerText = "Start Posting";
+        }
+
+        // --- Helpers ---
+        function saveDraft() {
+            const rows = [];
+            document.querySelectorAll('.meter-row').forEach(row => {
+                rows.push({
+                    meterNo: row.querySelector('.inp-meter').value, sealNo: row.querySelector('.inp-seal').value,
+                    manufacturerId: row.querySelector('.inp-brand').value, initialReading: row.querySelector('.inp-init').value,
+                    kwhReading: row.querySelector('.inp-kwh').value, meterType: row.querySelector('.inp-type').value,
+                    statusHtml: row.querySelector('.status-cell').innerHTML, isSuccess: row.querySelector('.status-cell').classList.contains('text-green-500')
+                });
+            });
+            localStorage.setItem('reb_draft_v8', JSON.stringify(rows));
+        }
+
+        function restoreDraft() {
+            const saved = JSON.parse(localStorage.getItem('reb_draft_v8'));
+            if(saved) renderRows(0, saved);
+            else renderRows(5);
+        }
+
+        function updateColumns() {
+            const ids = ['init','kwh','demand','type','bs1','bs2','ctManufacturer','ctSeal'];
+            let activeCount = 0;
+            ids.forEach(id => {
+                const checked = document.getElementById(`tog-${id}`)?.checked;
+                if(checked) { activeCount++; document.querySelectorAll(`.opt-${id}`).forEach(e => e.classList.remove('col-hidden')); }
+                else { document.querySelectorAll(`.opt-${id}`).forEach(e => e.classList.add('col-hidden')); }
+            });
+            const container = document.getElementById('meterTable');
+            const cols = window.innerWidth < 768 ? `35px 140px 140px 120px ${'100px '.repeat(activeCount)} 80px 30px` : `40px 1fr 1fr 1fr ${'1fr '.repeat(activeCount)} 100px 30px`;
+            container.style.gridTemplateColumns = cols;
+        }
+
+        function loadSettings() {
+            const saved = JSON.parse(localStorage.getItem('reb_settings_v8'));
+            if(saved) { Object.keys(saved).forEach(k => { const el = document.getElementById(`tog-${k}`); if(el) el.checked = saved[k]; }); }
+            updateColumns();
+        }
+
+        function handleKey(e) { if(e.key === 'Enter') addEmptyRow(); }
+        function addEmptyRow() { renderRows(1); }
+        function deleteRow(btn) { btn.closest('.meter-row').remove(); saveDraft(); }
+        function toggleCredModal() { document.getElementById('credModal').classList.toggle('hidden'); }
+        function toggleSettingsModal() { document.getElementById('settingsModal').classList.toggle('hidden'); }
+        function toggleSheetModal() { document.getElementById('sheetModal').classList.toggle('hidden'); }
+        function processSheetData() {
+            const raw = document.getElementById('sheetPasteArea').value.trim();
+            if(!raw) return;
+            const lines = raw.split('\n');
+            lines.forEach(line => {
+                const parts = line.split(/\t|,/).map(s => s.trim());
+                if(parts.length >= 1) renderRows(0, [{ meterNo: parts[0], sealNo: parts[1] || '' }]);
+            });
+            toggleSheetModal(); saveDraft();
+        }
+
+        function checkUrl() {
+            const path = window.location.pathname;
+            if (path.startsWith('/login/')) {
+                document.getElementById('apiKeyInput').value = path.split('/login/')[1];
+                handleApiKeyLogin();
+            } else if (state.userKey) {
+                document.getElementById('apiKeyInput').value = state.userKey;
+                handleApiKeyLogin();
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', checkUrl);
+        window.addEventListener('resize', updateColumns);
+    </script>
+</body>
+</html>
